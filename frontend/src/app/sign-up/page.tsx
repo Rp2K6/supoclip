@@ -1,15 +1,18 @@
-import { SignUp } from "@/components/auth/sign-up";
-import { AuthFrame } from "@/components/auth/auth-frame";
-import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+"use client";
 
-export default async function SignUpPage() {
-  const t = await getTranslations("auth");
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+export default function SignUpPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/");
+  }, [router]);
+
   return (
-    <AuthFrame
-      footer={<>{t("signUpPage.hasAccount")}{" "}<Link href="/sign-in" className="font-medium text-foreground underline-offset-4 hover:underline">{t("signUpPage.signIn")}</Link></>}
-    >
-      <SignUp />
-    </AuthFrame>
+    <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+      Redirecting to dashboard...
+    </div>
   );
 }

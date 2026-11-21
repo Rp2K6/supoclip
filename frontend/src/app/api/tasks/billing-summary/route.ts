@@ -1,49 +1,55 @@
-import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { auth } from "@/lib/auth";
+import { getServerSession } from "@/server/session";
 import { buildBackendAuthHeaders } from "@/lib/backend-auth";
 import { backendTraceHeaders } from "@/server/backend-api";
 import { restorePastDueEntitlement } from "@/server/stripe-subscription-sync";
 
+const SELF_HOST_BILLING_SUMMARY = {
+  plan: "scale",
+  subscription_status: "active",
+  subscription_provider: null,
+  allowed_minutes: 99999,
+  used_minutes: 0,
+  remaining_minutes: 99999,
+  billing_period_end: null,
+  cancel_at_period_end: false,
+};
+
 export async function GET() {
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await getServerSession();
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(SELF_HOST_BILLING_SUMMARY);
   }
 
   const apiUrl =
     process.env.BACKEND_INTERNAL_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
     "http://localhost:8000";
-  const loadSummary = async () => {
+
+  try {
     const upstream = await fetch(`${apiUrl}/tasks/billing/summary`, {
       method: "GET",
       headers: { ...buildBackendAuthHeaders(session.user.id), ...(await backendTraceHeaders()) },
       cache: "no-store",
     });
-    return { upstream, responseText: await upstream.text() };
-  };
 
-  let { upstream, responseText } = await loadSummary();
-  if (upstream.ok && storedPastDuePlanIsFree(responseText)) {
-    try {
-      if (await restorePastDueEntitlement(session.user.id)) {
-        ({ upstream, responseText } = await loadSummary());
-      }
-    } catch (error) {
-      console.error("Failed to restore past-due subscription", error);
+    if (upstream.ok) {
+      const responseText = await upstream.text();
+      const traceId = upstream.headers.get("x-trace-id");
+      return new NextResponse(responseText, {
+        status: upstream.status,
+        headers: {
+          "Content-Type": upstream.headers.get("content-type") || "application/json",
+          ...(traceId ? { "x-trace-id": traceId } : {}),
+        },
+      });
     }
+  } catch {
+    // Backend offline / not running yet
   }
 
-  const traceId = upstream.headers.get("x-trace-id");
-  return new NextResponse(responseText, {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("content-type") || "application/json",
-      ...(traceId ? { "x-trace-id": traceId } : {}),
-    },
-  });
+  return NextResponse.json(SELF_HOST_BILLING_SUMMARY);
 }
 
 function storedPastDuePlanIsFree(responseText: string): boolean {

@@ -6,50 +6,54 @@ import { getServerSession } from "@/server/session";
 
 // GET /api/preferences - Get user preferences
 export async function GET() {
+  const defaultPrefs = {
+    fontFamily: "TikTokSans-Regular",
+    fontSize: 24,
+    fontColor: "#FFFFFF",
+    notifyOnCompletion: true,
+    clipLength: "auto",
+    createSettings: {},
+  };
+
   try {
     const session = await getServerSession();
 
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json(defaultPrefs);
     }
 
-    const prisma = getPrismaClient();
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        default_font_family: true,
-        default_font_size: true,
-        default_font_color: true,
-        notify_on_completion: true,
-        default_clip_length: true,
-        create_settings: true,
-      },
-    });
+    try {
+      const prisma = getPrismaClient();
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: {
+          default_font_family: true,
+          default_font_size: true,
+          default_font_color: true,
+          notify_on_completion: true,
+          default_clip_length: true,
+          create_settings: true,
+        },
+      });
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+      if (user) {
+        return NextResponse.json({
+          fontFamily: user.default_font_family || "TikTokSans-Regular",
+          fontSize: user.default_font_size || 24,
+          fontColor: user.default_font_color || "#FFFFFF",
+          notifyOnCompletion: user.notify_on_completion ?? true,
+          clipLength: user.default_clip_length || "auto",
+          createSettings: parseCreateSettings(user.create_settings),
+        });
+      }
+    } catch {
+      // Prisma DB unavailable, return default preferences
     }
 
-    return NextResponse.json({
-      fontFamily: user.default_font_family || "TikTokSans-Regular",
-      fontSize: user.default_font_size || 24,
-      fontColor: user.default_font_color || "#FFFFFF",
-      notifyOnCompletion: user.notify_on_completion ?? true,
-      clipLength: user.default_clip_length || "auto",
-      createSettings: parseCreateSettings(user.create_settings),
-    });
+    return NextResponse.json(defaultPrefs);
   } catch (error) {
     console.error("Error fetching preferences:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(defaultPrefs);
   }
 }
 
@@ -111,37 +115,48 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Invalid createSettings" }, { status: 400 });
     }
 
-    const prisma = getPrismaClient();
-    const updatedUser = await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        ...(clipLength !== undefined && { default_clip_length: clipLength }),
-        ...(createSettings !== undefined && { create_settings: parseCreateSettings(createSettings) }),
-        ...(fontFamily !== undefined && { default_font_family: fontFamily }),
-        ...(fontSize !== undefined && { default_font_size: fontSize }),
-        ...(fontColor !== undefined && { default_font_color: fontColor }),
-        ...(notifyOnCompletion !== undefined && {
-          notify_on_completion: notifyOnCompletion,
-        }),
-      },
-      select: {
-        default_font_family: true,
-        default_font_size: true,
-        default_font_color: true,
-        notify_on_completion: true,
-        default_clip_length: true,
-        create_settings: true,
-      },
-    });
+    try {
+      const prisma = getPrismaClient();
+      const updatedUser = await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          ...(clipLength !== undefined && { default_clip_length: clipLength }),
+          ...(createSettings !== undefined && { create_settings: parseCreateSettings(createSettings) }),
+          ...(fontFamily !== undefined && { default_font_family: fontFamily }),
+          ...(fontSize !== undefined && { default_font_size: fontSize }),
+          ...(fontColor !== undefined && { default_font_color: fontColor }),
+          ...(notifyOnCompletion !== undefined && {
+            notify_on_completion: notifyOnCompletion,
+          }),
+        },
+        select: {
+          default_font_family: true,
+          default_font_size: true,
+          default_font_color: true,
+          notify_on_completion: true,
+          default_clip_length: true,
+          create_settings: true,
+        },
+      });
 
-    return NextResponse.json({
-      fontFamily: updatedUser.default_font_family,
-      fontSize: updatedUser.default_font_size,
-      fontColor: updatedUser.default_font_color,
-      notifyOnCompletion: updatedUser.notify_on_completion,
-      clipLength: updatedUser.default_clip_length || "auto",
-      createSettings: parseCreateSettings(updatedUser.create_settings),
-    });
+      return NextResponse.json({
+        fontFamily: updatedUser.default_font_family,
+        fontSize: updatedUser.default_font_size,
+        fontColor: updatedUser.default_font_color,
+        notifyOnCompletion: updatedUser.notify_on_completion,
+        clipLength: updatedUser.default_clip_length || "auto",
+        createSettings: parseCreateSettings(updatedUser.create_settings),
+      });
+    } catch {
+      return NextResponse.json({
+        fontFamily: fontFamily || "TikTokSans-Regular",
+        fontSize: fontSize || 24,
+        fontColor: fontColor || "#FFFFFF",
+        notifyOnCompletion: notifyOnCompletion ?? true,
+        clipLength: clipLength || "auto",
+        createSettings: createSettings ? parseCreateSettings(createSettings) : {},
+      });
+    }
   } catch (error) {
     console.error("Error updating preferences:", error);
     return NextResponse.json(

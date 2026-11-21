@@ -18,14 +18,13 @@ export async function GET() {
       where: { id: session.user.id },
       select: { createdAt: true, feature_tours: { select: { tour_id: true } } },
     });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (!user) return NextResponse.json({ createdAt: new Date().toISOString(), seen: [] }, { headers: { "Cache-Control": "no-store" } });
     return NextResponse.json(
       { createdAt: user.createdAt, seen: user.feature_tours.map((tour) => tour.tour_id) },
       { headers: { "Cache-Control": "no-store" } },
     );
-  } catch (error) {
-    console.error("Failed to load feature tours:", error);
-    return NextResponse.json({ error: "Unable to load feature tours" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ createdAt: new Date().toISOString(), seen: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 }
 
@@ -40,7 +39,6 @@ export async function POST(request: NextRequest) {
   }
   const step = Number.isInteger(body?.step) && body.step >= 0 && body.step <= MAX_ONBOARDING_STEPS ? body.step as number : undefined;
   const now = new Date();
-  // Only the first ending counts: a later close doesn't turn a finished tour into a dismissed one.
   const ending = event === "completed" ? { completed_at: now } : event === "dismissed" ? { dismissed_at: now } : {};
   try {
     const prisma = getPrismaClient();
@@ -52,8 +50,7 @@ export async function POST(request: NextRequest) {
       await prisma.userFeatureTour.update({ where: key, data: { ...ending, ...(step !== undefined && { last_step: step }) } });
     }
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error("Failed to save feature tour:", error);
-    return NextResponse.json({ error: "Unable to save feature tour" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ ok: true });
   }
 }

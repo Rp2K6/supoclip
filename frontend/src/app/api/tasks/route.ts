@@ -9,11 +9,15 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const upstream = await fetchBackend("/tasks/", {
-    method: "GET",
-    userId: session.user.id,
-    cache: "no-store",
-  });
+  try {
+    const upstream = await fetchBackend("/tasks/", {
+      method: "GET",
+      userId: session.user.id,
+      cache: "no-store",
+    });
 
-  return createProxyResponse(upstream);
+    return createProxyResponse(upstream);
+  } catch {
+    return NextResponse.json({ tasks: [] });
+  }
 }

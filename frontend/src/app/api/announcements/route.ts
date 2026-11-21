@@ -11,8 +11,7 @@ export async function GET() {
       select: { id: true, title: true, description: true, href: true, action: true, publishedAt: true },
     });
     return NextResponse.json({ announcements }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    console.error("Failed to load announcements:", error);
-    return NextResponse.json({ error: "Unable to load announcements" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ announcements: [] }, { headers: { "Cache-Control": "no-store" } });
   }
 }
