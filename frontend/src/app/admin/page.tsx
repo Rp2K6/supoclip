@@ -108,163 +108,204 @@ export default async function AdminPage({
     }
   }
 
-  const [
-    runtimeSettings,
-    totalUsers,
-    adminUsers,
-    totalTasks,
-    completedTasks,
-    activeTasks,
-    recentUsers,
-    processingNow,
-    recentGenerations,
-    tasksByUser,
-    selectedUser,
-    selectedUserTasks,
-    affiliates,
-    featureFlags,
-  ] = await Promise.all([
-    loadRuntimeSettings(),
-    prisma.user.count(),
-    prisma.user.count({ where: { is_admin: true } }),
-    prisma.task.count(),
-    prisma.task.count({ where: { status: "completed" } }),
-    prisma.task.count({ where: { status: { in: ACTIVE_TASK_STATUSES } } }),
-    prisma.user.findMany({
-      where: userQuery
-        ? {
-            OR: [
-              { email: { contains: userQuery, mode: "insensitive" } },
-              { name: { contains: userQuery, mode: "insensitive" } },
-              { id: userQuery },
-            ],
-          }
-        : undefined,
-      orderBy: { createdAt: "desc" },
-      take: 30,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        is_admin: true,
-        plan: true,
-        subscription_status: true,
-        subscription_provider: true,
-        legacy_hd: true,
-        createdAt: true,
-      },
-    }),
-    prisma.task.findMany({
-      where: { status: { in: ACTIVE_TASK_STATUSES } },
-      orderBy: { updated_at: "desc" },
-      take: 25,
-      select: {
-        id: true,
-        status: true,
-        created_at: true,
-        updated_at: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-          },
+  let totalUsers = 1;
+  let adminUsers = 1;
+  let totalTasks = 0;
+  let completedTasks = 0;
+  let activeTasks = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let recentUsers: any[] = [
+    {
+      id: adminUserId,
+      email: session.user.email || "admin@localhost",
+      name: session.user.name || "Admin",
+      is_admin: true,
+      plan: "scale",
+      subscription_status: "active",
+      subscription_provider: null,
+      legacy_hd: true,
+      createdAt: new Date(),
+    },
+  ];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let processingNow: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let recentGenerations: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tasksByUser: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let selectedUser: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let selectedUserTasks: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let affiliates: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let featureFlags: any[] = [];
+
+  const runtimeSettings = await loadRuntimeSettings();
+
+  try {
+    const results = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { is_admin: true } }),
+      prisma.task.count(),
+      prisma.task.count({ where: { status: "completed" } }),
+      prisma.task.count({ where: { status: { in: ACTIVE_TASK_STATUSES } } }),
+      prisma.user.findMany({
+        where: userQuery
+          ? {
+              OR: [
+                { email: { contains: userQuery, mode: "insensitive" } },
+                { name: { contains: userQuery, mode: "insensitive" } },
+                { id: userQuery },
+              ],
+            }
+          : undefined,
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          is_admin: true,
+          plan: true,
+          subscription_status: true,
+          subscription_provider: true,
+          legacy_hd: true,
+          createdAt: true,
         },
-        source: {
-          select: {
-            title: true,
-          },
-        },
-      },
-    }),
-    prisma.task.findMany({
-      orderBy: { created_at: "desc" },
-      take: 40,
-      select: {
-        id: true,
-        status: true,
-        created_at: true,
-        generated_clips_ids: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-          },
-        },
-        source: {
-          select: {
-            title: true,
-            type: true,
-          },
-        },
-      },
-    }),
-    prisma.task.groupBy({
-      by: ["user_id"],
-      _count: {
-        _all: true,
-      },
-    }),
-    selectedUserId
-      ? prisma.user.findUnique({
-          where: { id: selectedUserId },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            is_admin: true,
-          },
-        })
-      : Promise.resolve(null),
-    selectedUserId
-      ? prisma.task.findMany({
-          where: { user_id: selectedUserId },
-          orderBy: { created_at: "desc" },
-          take: 40,
-          select: {
-            id: true,
-            status: true,
-            created_at: true,
-            generated_clips_ids: true,
-            source: {
-              select: {
-                title: true,
-                type: true,
-              },
+      }),
+      prisma.task.findMany({
+        where: { status: { in: ACTIVE_TASK_STATUSES } },
+        orderBy: { updated_at: "desc" },
+        take: 25,
+        select: {
+          id: true,
+          status: true,
+          created_at: true,
+          updated_at: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
             },
           },
-        })
-      : Promise.resolve([]),
-    prisma.affiliate.findMany({
-      where: { status: { in: ["pending", "approved"] } },
-      orderBy: { created_at: "desc" },
-      take: 100,
-      select: {
-        id: true,
-        slug: true,
-        status: true,
-        platform: true,
-        profile_url: true,
-        audience_size: true,
-        video_url: true,
-        promotion_plan: true,
-        app_store_code_added_at: true,
-        created_at: true,
-        user: { select: { email: true, name: true } },
-      },
-    }),
-    prisma.featureFlag.findMany({
-      orderBy: { key: "asc" },
-      select: {
-        key: true,
-        description: true,
-        web_enabled: true,
-        ios_enabled: true,
-        admins_bypass: true,
-        updated_at: true,
-        updated_by_user: { select: { email: true } },
-      },
-    }),
-  ]);
+          source: {
+            select: {
+              title: true,
+            },
+          },
+        },
+      }),
+      prisma.task.findMany({
+        orderBy: { created_at: "desc" },
+        take: 40,
+        select: {
+          id: true,
+          status: true,
+          created_at: true,
+          generated_clips_ids: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+            },
+          },
+          source: {
+            select: {
+              title: true,
+              type: true,
+            },
+          },
+        },
+      }),
+      prisma.task.groupBy({
+        by: ["user_id"],
+        _count: {
+          _all: true,
+        },
+      }),
+      selectedUserId
+        ? prisma.user.findUnique({
+            where: { id: selectedUserId },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              is_admin: true,
+            },
+          })
+        : Promise.resolve(null),
+      selectedUserId
+        ? prisma.task.findMany({
+            where: { user_id: selectedUserId },
+            orderBy: { created_at: "desc" },
+            take: 40,
+            select: {
+              id: true,
+              status: true,
+              created_at: true,
+              generated_clips_ids: true,
+              source: {
+                select: {
+                  title: true,
+                  type: true,
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
+      prisma.affiliate.findMany({
+        where: { status: { in: ["pending", "approved"] } },
+        orderBy: { created_at: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          slug: true,
+          status: true,
+          platform: true,
+          profile_url: true,
+          audience_size: true,
+          video_url: true,
+          promotion_plan: true,
+          app_store_code_added_at: true,
+          created_at: true,
+          user: { select: { email: true, name: true } },
+        },
+      }),
+      prisma.featureFlag.findMany({
+        orderBy: { key: "asc" },
+        select: {
+          key: true,
+          description: true,
+          web_enabled: true,
+          ios_enabled: true,
+          admins_bypass: true,
+          updated_at: true,
+          updated_by_user: { select: { email: true } },
+        },
+      }),
+    ]);
+
+    [
+      totalUsers,
+      adminUsers,
+      totalTasks,
+      completedTasks,
+      activeTasks,
+      recentUsers,
+      processingNow,
+      recentGenerations,
+      tasksByUser,
+      selectedUser,
+      selectedUserTasks,
+      affiliates,
+      featureFlags,
+    ] = results;
+  } catch (dbError) {
+    console.warn("Database offline for admin stats:", dbError);
+  }
+
 
   // Pending applications first; each group newest first.
   const sortedAffiliates = [...affiliates].sort(
